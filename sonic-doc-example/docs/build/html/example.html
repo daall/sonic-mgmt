@@ -1,0 +1,290 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>example &mdash; SONiC 202006 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script type="text/javascript" src="_static/jquery.js"></script>
+        <script type="text/javascript" src="_static/underscore.js"></script>
+        <script type="text/javascript" src="_static/doctools.js"></script>
+        <script type="text/javascript" src="_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="SONiC Management Documentation Example" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> SONiC
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Python API</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">example</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SONiC</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>example</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/example.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="module-example">
+<span id="example"></span><h1>example<a class="headerlink" href="#module-example" title="Permalink to this headline">¶</a></h1>
+<p>This is an example of of how to document a module in sonic-mgmt.</p>
+<p>All modules should begin with a one line summary, followed by further description if necessary.  If you are documenting a test file, this is a good place to briefly describe what type of behavior you are testing.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You can add specific notes regarding usage, limitations, etc. as well.</p>
+</div>
+<p class="rubric">Example</p>
+<p>Usage examples are also encouraged, especially for test cases that have a lot of input parameters or specific setup requirements. You can even include code snippets like so:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ pytest -v --example-param &quot;SONiC is great!&quot; test_example.py
+</pre></div>
+</div>
+<div class="admonition-todo admonition" id="index-0">
+<p class="first admonition-title">Todo</p>
+<ul class="last simple">
+<li>Future improvements can be added as module-level todos</li>
+<li>Also an appropriate place to note future test cases</li>
+</ul>
+</div>
+<dl class="class">
+<dt id="example.ClassExample">
+<em class="property">class </em><code class="descclassname">example.</code><code class="descname">ClassExample</code><a class="headerlink" href="#example.ClassExample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>This is an example of how to document a class with docstrings.</p>
+<p>Classes should also have a one line summary, followed by additional description as appropriate.</p>
+<dl class="attribute">
+<dt id="example.ClassExample.a">
+<code class="descname">a</code><a class="headerlink" href="#example.ClassExample.a" title="Permalink to this definition">¶</a></dt>
+<dd><p>Example of a public attribute of a class.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Type:</th><td class="field-body">str</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Notes, cautions, and examples may be used in classes just like they are in functions and modules.</p>
+</div>
+</dd></dl>
+
+<dl class="data">
+<dt id="example.THIS_IS_A_CONSTANT">
+<code class="descclassname">example.</code><code class="descname">THIS_IS_A_CONSTANT</code><em class="property"> = 202006</em><a class="headerlink" href="#example.THIS_IS_A_CONSTANT" title="Permalink to this definition">¶</a></dt>
+<dd><p>Module level variables should be documented like so.</p>
+<p>Note that only public facing variables need to be documented. If you wish for a variable to be private, please indicate so by adding a double underscore prefix as shown in the source.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="example.module_level_function_example">
+<code class="descclassname">example.</code><code class="descname">module_level_function_example</code><span class="sig-paren">(</span><em>x</em>, <em>y</em><span class="sig-paren">)</span><a class="headerlink" href="#example.module_level_function_example" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is an example of how to document a function with docstrings.</p>
+<p>Functions also begin with a one line summary, followed by additional description as appropriate.</p>
+<div class="admonition caution">
+<p class="first admonition-title">Caution</p>
+<p class="last">If your method performs a write operation on the DUT, PTF, or any other part of the system, it’s helpful to include a note to the client. This is not required for test-case specific code, but will be enforced during code review for shared code.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>x</strong> (<em>int</em>) – <p>The first argument.
+Note that descriptions can span multiple lines as long as following lines
+are indented.</p>
+<p>They can also include whitespace, for instance if you want to provide extra advice or examples.</p>
+</li>
+<li><strong>y</strong> (<em>int</em>) – The second argument.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><p>The return value. Please try to be as specific as possible when specifying input and return types. Consider adding an example if your function returns a dictionary/tuple/some other data type where the fields would otherwise have to be inferred by the client, like so:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s2">&quot;result1&quot;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="s2">&quot;result2&quot;</span><span class="p">:</span> <span class="mi">9</span><span class="p">}</span>
+</pre></div>
+</div>
+</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Dict[int, int]</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Example</p>
+<p>Usage examples should be included for shared, public interfaces. Otherwise, they are not required.</p>
+</dd></dl>
+
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+      
+        <a href="index.html" class="btn btn-neutral float-left" title="SONiC Management Documentation Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, SONiC Community
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
