@@ -32,7 +32,7 @@ def config_syslog_srv(ptfhost, duthost):
 
     # Wait a little bit for service to start
     def _is_syslog_running():
-        result = duthost.shell("service rsyslog status | grep \"active (running)\"")["stdout"]
+        result = ptfhost.shell("service rsyslog status | grep \"active (running)\"")["stdout"]
         return "active (running)" in result
 
     wait_until(SYSLOG_STARTUP_TIMEOUT, SYSLOG_STARTUP_POLLING_INTERVAL, _is_syslog_running)
