@@ -36,16 +36,17 @@ def load_acl_rules_config(table_name, rules_file):
 
 
 def parse_rules_as_config_db(rules, ip_version):
-    cdb_rules = {}
+    cdb_rules = []
     for rule in rules:
         cdb_rule = {"qualifiers": {}}
         for qset in rule["qualifiers"].keys():
             for qualifier, value in rule["qualifiers"][qset].items():
                 cdb_qualifier = _parse_open_config_qualifier(qualifier, value, ip_version)
                 cdb_value = _parse_open_config_value(qualifier, value)
-                cdb_rule["qualifiers"].update({"qualifier": cdb_qualifier, "value": cdb_value})
+                cdb_rule["qualifiers"].update({cdb_qualifier: cdb_value})
 
         # TODO: Add support for specifying packet actions
+        cdb_rules.append(cdb_rule)
 
     return cdb_rules
 
@@ -67,7 +68,7 @@ def _parse_open_config_value(qualifier, value):
     if qualifier in PORT_RANGE_CDB_LOOKUP and ".." in value:
         return value.replace("..", "-")
 
-    if qualifier == "TCP_FLAGS":
+    if qualifier == "tcp-flags":
         tcp_flags = 0x00
 
         if "TCP_FIN" in value:

@@ -2,7 +2,7 @@
     {
         "ACL_RULE": {
             {% for rule in rules %}
-            "{{ acl_table_name }}|{{ loop.index }}": {
+            "{{ acl_table_name }}|RULE_{{ loop.index }}": {
                 "PRIORITY": "{{ 10000 - loop.index }}",
                 "{{ mirror_action }}": "{{ session_name }}",
                 {% for qualifier, value in rule["qualifiers"].items() %}
