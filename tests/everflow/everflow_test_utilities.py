@@ -415,7 +415,7 @@ class BaseEverflowTest(object):
                 "table_name": table_name,
                 "table_type": table_type,
                 "table_stage": self.acl_stage(),
-                "binding_ports": ""  # FIXME
+                "binding_ports": duthost.get_active_front_panel_interfaces().join(',')
             }
             duthost.host.options["variable_manager"].extra_vars.update(config_vars)
 
