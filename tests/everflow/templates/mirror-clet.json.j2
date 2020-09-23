@@ -1,0 +1,16 @@
+[
+    {
+        "MIRROR_SESSION": {
+            "{{ session_info["session_name"] }}": {
+                {% if "session_policer" in session_info %}
+                "policer":  "{{ session_info["session_policer"] }}",
+                {% endif %}
+                "src_ip": "{{ session_info["session_src_ip"] }}",
+                "dst_ip": "{{ session_info["session_dst_ip"] }}",
+                "dscp": "{{ session_info["session_dscp"] }}",
+                "ttl": "{{ session_info["session_ttl"] }}",
+                "gre_type": "{{ session_info["session_gre"] }}"
+            }
+        }
+    }
+]

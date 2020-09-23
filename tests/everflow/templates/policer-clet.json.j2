@@ -1,0 +1,13 @@
+[
+    {
+        "POLICER": {
+            "{{ policer_name }}": {
+                "meter_type": "bytes",
+                "mode": "sr_tcm",
+                "cir": "{{ rate_limit }}",
+                "cbs": "{{ rate_limit }}",
+                "red_packet_action": "drop"
+            }
+        }
+    }
+]

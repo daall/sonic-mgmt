@@ -21,6 +21,11 @@ CONFIG_MODE_CONFIGLET = "configlet"
 
 TEMPLATE_DIR = "everflow/templates"
 EVERFLOW_RULE_CREATE_TEMPLATE = "acl-erspan.json.j2"
+POLICER_CONFIGLET = "policer-clet.json.j2"
+MIRROR_SESSION_CONFIGLET = "mirror-clet.json.j2"
+ACL_TABLE_CONFIGLET = "acl-table-clet.json.j2"
+ACL_RULE_CONFIGLET = "acl-rule-clet.json.j2"
+REMOVE_CONFIGLET_TEMPLATE = "del-clet.json.j2"
 
 FILE_DIR = "everflow/files"
 EVERFLOW_V4_RULES = "ipv4_test_rules.yaml"
@@ -29,6 +34,8 @@ EVERFLOW_DSCP_RULES = "dscp_test_rules.yaml"
 DUT_RUN_DIR = "/tmp/everflow"
 EVERFLOW_RULE_CREATE_FILE = "acl-erspan.json"
 EVERFLOW_RULE_DELETE_FILE = "acl-remove.json"
+CREATE_CONFIGLET_FILE = "clet.json"
+REMOVE_CONFIGLET_FILE = "del-clet.json"
 
 
 @pytest.fixture(scope="module")
@@ -319,7 +326,14 @@ class BaseEverflowTest(object):
                 command += " --policer {}".format(policer)
 
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            duthost.host.options["variable_manager"].extra_vars.update(session_info)
+
+            configlet_path = os.path.join(DUT_RUN_DIR, CREATE_CONFIGLET_FILE)
+
+            duthost.template(src=os.path.join(TEMPLATE_DIR, MIRROR_SESSION_CONFIGLET),
+                             dest=configlet_path)
+
+            command = "configlet -u -j {}".format(configlet_path)
 
         duthost.command(command)
 
@@ -327,7 +341,7 @@ class BaseEverflowTest(object):
         if config_method == CONFIG_MODE_CLI:
             command = "config mirror_session remove {}".format(session_name)
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            command = self.generate_remove_configlet_command(duthost, "MIRROR_SESSION", session_name)
 
         duthost.command(command)
 
@@ -337,7 +351,15 @@ class BaseEverflowTest(object):
                        "meter_type packets mode sr_tcm cir {} cbs {} "
                        "red_packet_action drop").format(policer_name, rate_limit, rate_limit)
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            config_vars = {"policer_name": policer_name, "rate_limit": rate_limit}
+            duthost.host.options["variable_manager"].extra_vars.update(config_vars)
+
+            configlet_path = os.path.join(DUT_RUN_DIR, CREATE_CONFIGLET_FILE)
+
+            duthost.template(src=os.path.join(TEMPLATE_DIR, POLICER_CONFIGLET),
+                             dest=configlet_path)
+
+            command = "configlet -u -j {}".format(configlet_path)
 
         duthost.command(command)
 
@@ -345,7 +367,7 @@ class BaseEverflowTest(object):
         if config_method == CONFIG_MODE_CLI:
             command = "redis-cli -n 4 del \"POLICER|{}\"".format(policer_name)
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            command = self.generate_remove_configlet_command(duthost, "POLICER", policer_name)
 
         duthost.command(command)
 
@@ -388,7 +410,20 @@ class BaseEverflowTest(object):
                 command += " --stage {}".format(self.acl_stage())
 
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            config_vars = {
+                "table_name": table_name,
+                "table_type": table_type,
+                "table_stage": self.acl_stage(),
+                "binding_ports": ""  # FIXME
+            }
+            duthost.host.options["variable_manager"].extra_vars.update(config_vars)
+
+            configlet_path = os.path.join(DUT_RUN_DIR, CREATE_CONFIGLET_FILE)
+
+            duthost.template(src=os.path.join(TEMPLATE_DIR, ACL_TABLE_CONFIGLET),
+                             dest=configlet_path)
+
+            command = "configlet -u -j {}".format(configlet_path)
 
         duthost.command(command)
 
@@ -396,7 +431,7 @@ class BaseEverflowTest(object):
         if config_method == CONFIG_MODE_CLI:
             command = "config acl remove table {}".format(table_name)
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            command = self.generate_remove_configlet_command(duthost, "ACL_TABLE", table_name)
 
         duthost.command(command)
 
@@ -409,6 +444,9 @@ class BaseEverflowTest(object):
             rules=EVERFLOW_V4_RULES
     ):
         rules_config = load_acl_rules_config(table_name, os.path.join(FILE_DIR, rules))
+        if config_method == CONFIG_MODE_CONFIGLET:
+            rules_config.update({"mirror_type": self.mirror_type(), "session_name": session_name})
+
         duthost.host.options["variable_manager"].extra_vars.update(rules_config)
 
         if config_method == CONFIG_MODE_CLI:
@@ -426,7 +464,12 @@ class BaseEverflowTest(object):
                 command += " --mirror_stage {}".format(self.mirror_type())
 
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            configlet_path = os.path.join(DUT_RUN_DIR, CREATE_CONFIGLET_FILE)
+
+            duthost.template(src=os.path.join(TEMPLATE_DIR, ACL_RULE_CONFIGLET),
+                             dest=configlet_path)
+
+            command = "configlet -u -j {}".format(configlet_path)
 
         duthost.command(command)
         time.sleep(2)
@@ -438,9 +481,20 @@ class BaseEverflowTest(object):
             command = "acl-loader update full {} --table_name {}" \
                 .format(os.path.join(DUT_RUN_DIR, EVERFLOW_RULE_DELETE_FILE), table_name)
         elif config_method == CONFIG_MODE_CONFIGLET:
-            pass
+            command = self.generate_remove_configlet_command(duthost, "ACL_RULE", table_name)
 
         duthost.command(command)
+
+    def generate_remove_configlet_command(self, duthost, config_db_object, key):
+        delete_vars = {"table_name": config_db_object, "key": key}
+        duthost.host.options["variable_manager"].extra_vars.update(delete_vars)
+
+        configlet_path = os.path.join(DUT_RUN_DIR, REMOVE_CONFIGLET_FILE)
+
+        duthost.template(src=os.path.join(TEMPLATE_DIR, REMOVE_CONFIGLET_TEMPLATE),
+                         dest=configlet_path)
+
+        return "configlet -d -j {}".format(configlet_path)
 
     @abstractmethod
     def mirror_type(self):
