@@ -6,7 +6,6 @@ import time
 import ipaddr
 import binascii
 import pytest
-import yaml
 
 import ptf.testutils as testutils
 import ptf.packet as packet
@@ -14,8 +13,8 @@ import ptf.packet as packet
 from abc import abstractmethod
 from ptf.mask import Mask
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.dataplane_acl import load_acl_rules_config, parse_rules_as_config_db
 
-# TODO: Add suport for CONFIGLET mode
 CONFIG_MODE_CLI = "cli"
 CONFIG_MODE_CONFIGLET = "configlet"
 
@@ -235,16 +234,6 @@ def get_neighbor_info(duthost, dest_port, resolved=True):
     return peer_ip, duthost.shell("ip neigh show {} | awk -F\" \" \"{{print $5}}\"".format(peer_ip))["stdout"]
 
 
-# TODO: This can probably be moved to a shared location in a later PR.
-def load_acl_rules_config(table_name, rules_file):
-    with open(rules_file, "r") as f:
-        acl_rules = yaml.safe_load(f)
-
-    rules_config = {"acl_table_name": table_name, "rules": acl_rules}
-
-    return rules_config
-
-
 class BaseEverflowTest(object):
     """
     Base class for setting up a set of Everflow tests.
@@ -415,7 +404,7 @@ class BaseEverflowTest(object):
                 "table_name": table_name,
                 "table_type": table_type,
                 "table_stage": self.acl_stage(),
-                "binding_ports": duthost.get_active_front_panel_interfaces().join(',')
+                "binding_ports": ",".join(duthost.get_active_front_panel_interfaces())
             }
             duthost.host.options["variable_manager"].extra_vars.update(config_vars)
 
@@ -446,7 +435,11 @@ class BaseEverflowTest(object):
     ):
         rules_config = load_acl_rules_config(table_name, os.path.join(FILE_DIR, rules))
         if config_method == CONFIG_MODE_CONFIGLET:
-            rules_config.update({"mirror_type": self.mirror_type(), "session_name": session_name})
+            rules_config["rules"] = parse_rules_as_config_db(rules_config["rules"], self.ip_version())
+            rules_config.update({
+                "mirror_action": "MIRROR_ACTION" if self.mirror_type() == "ingress" else "MIRROR_EGRESS_ACTION",
+                "session_name": session_name
+            })
 
         duthost.host.options["variable_manager"].extra_vars.update(rules_config)
 
@@ -512,6 +505,15 @@ class BaseEverflowTest(object):
         Get the ACL stage for this set of test cases.
 
         Used to parametrize test cases based on the ACL stage.
+        """
+        pass
+
+    @abstractmethod
+    def ip_version(self):
+        """
+        Get the IP version for this set of test cases.
+
+        Used to parametrize test cases based on the IP version.
         """
         pass
 

@@ -467,6 +467,9 @@ class TestIngressEverflowIPv6(EverflowIPv6Tests):
     def mirror_type(self):
         return "ingress"
 
+    def ip_version(self):
+        return 6
+
     @pytest.fixture(scope='class',  autouse=True)
     def setup_acl_table(self, duthost, setup_info, setup_mirror_session, config_method):
         table_name = self._get_table_name(duthost)

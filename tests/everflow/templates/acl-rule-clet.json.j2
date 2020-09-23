@@ -4,11 +4,9 @@
             {% for rule in rules %}
             "{{ acl_table_name }}|{{ loop.index }}": {
                 "PRIORITY": "{{ 10000 - loop.index }}",
-                "{{ mirror_type }}": "{{ session_name }}",
-                {% for qset in rule["qualifiers"].keys() %}
-                {% for qualifier, value in rule["qualifiers"][qset].items() %}
+                "{{ mirror_action }}": "{{ session_name }}",
+                {% for qualifier, value in rule["qualifiers"].items() %}
                 "{{ qualifier }}": "{{ value }}"{% if not loop.last %},{% endif %}
-                {% endfor %}{% if not loop.last %},{% endif %}
                 {% endfor %}
             }{% if not loop.last %},{% endif %}
             {% endfor %}
