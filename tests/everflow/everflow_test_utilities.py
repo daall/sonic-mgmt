@@ -255,7 +255,7 @@ class BaseEverflowTest(object):
 
     OUTER_HEADER_SIZE = 38
 
-    @pytest.fixture(scope="class", params=[CONFIG_MODE_CLI])
+    @pytest.fixture(scope="class", params=[CONFIG_MODE_CONFIGLET])
     def config_method(self, request):
         """Get the configuration method for this set of test cases.
 
@@ -326,7 +326,8 @@ class BaseEverflowTest(object):
                 command += " --policer {}".format(policer)
 
         elif config_method == CONFIG_MODE_CONFIGLET:
-            duthost.host.options["variable_manager"].extra_vars.update(session_info)
+            config_vars = {"session_info": session_info}
+            duthost.host.options["variable_manager"].extra_vars.update(config_vars)
 
             configlet_path = os.path.join(DUT_RUN_DIR, CREATE_CONFIGLET_FILE)
 
