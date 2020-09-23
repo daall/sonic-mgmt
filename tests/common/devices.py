@@ -223,14 +223,14 @@ class SonicHost(AnsibleHostBase):
         logging.debug(self._critical_services)
 
     @property
-    def minigraph_facts(self):
+    def mg_facts(self):
         if not self._minigraph_facts:
             self._minigraph_facts = self.minigraph_facts(host=self.hostname)["ansible_facts"]
 
         return self._minigraph_facts
 
     def get_active_front_panel_interfaces(self):
-        return self.minigraph_facts["minigraph_ports"].keys()
+        return self.mg_facts["minigraph_ports"].keys()
 
     def reset_critical_services_tracking_list(self):
         """
