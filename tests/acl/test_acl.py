@@ -40,6 +40,7 @@ UPSTREAM_IP_TO_BLOCK = "192.168.144.1"
 
 
 class AclIPv4Test(BaseAclTest):
+    @pytest.fixture(scope="class")
     def table_type(self):
         return "L3"
 

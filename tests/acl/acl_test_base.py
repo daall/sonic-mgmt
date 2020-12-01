@@ -200,6 +200,11 @@ class BaseAclTest(object):
             assert counters_after["packets_count"] > counters_before["packets_count"]
             assert counters_after["bytes_count"] > counters_before["bytes_count"]
 
+    @pytest.fixture(params=["downlink->uplink", "uplink->downlink"])
+    def direction(self, request):
+        """Parametrize test based on direction of traffic."""
+        return request.param
+
     def get_src_port(self, setup, direction):
         """Get a source port for the current test."""
         src_ports = setup["downstream_port_ids"] if direction == "downlink->uplink" else setup["upstream_port_ids"]
