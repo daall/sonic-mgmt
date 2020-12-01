@@ -1,36 +1,22 @@
-import os
-import time
-import random
+import json
 import logging
-import pprint
 import pytest
+import random
 
 import ptf.testutils as testutils
 import ptf.mask as mask
 import ptf.packet as packet
 
-from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 
-from tests.acl.acl_test_constants import (
-    DUT_TMP_DIR,
-    FILES_DIR,
-    TEMPLATE_DIR,
-    ACL_RULES_FULL_TEMPLATE,
-    ACL_RULES_PART_TEMPLATES,
-    ACL_REMOVE_RULES_FILE,
-    LOG_EXPECT_ACL_RULE_CREATE_RE,
-    LOG_EXPECT_ACL_RULE_REMOVE_RE,
-    DEFAULT_SRC_IP,
-    DOWNSTREAM_DST_IP,
-    DOWNSTREAM_IP_TO_ALLOW,
-    DOWNSTREAM_IP_TO_BLOCK,
-    UPSTREAM_DST_IP,
-    UPSTREAM_IP_TO_ALLOW,
-    UPSTREAM_IP_TO_BLOCK
+from tests.acl.acl_test_base import (
+    BaseAclTest,
+    BaseHostResponder,
+    BasicAclConfiguration,
+    IncrementalAclConfiguration,
+    BasicAclConfigurationWithPortToggle,
+    BasicAclConfigurationWithReboot
 )
-
-from tests.common import reboot, port_toggle
-from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
 
 logger = logging.getLogger(__name__)
 
@@ -40,159 +26,22 @@ pytestmark = [
     pytest.mark.topology("any")
 ]
 
+VLAN_BASE_MAC_PATTERN = "72060001{:04}"
 
-class BaseAclTest(object):
-    """Base class for testing ACL rules.
+DEFAULT_SRC_IP = "20.0.0.1"
 
-    Subclasses must provide `setup_rules` method to prepare ACL rules for traffic testing.
+DOWNSTREAM_DST_IP = "192.168.0.2"
+DOWNSTREAM_IP_TO_ALLOW = "192.168.0.4"
+DOWNSTREAM_IP_TO_BLOCK = "192.168.0.8"
 
-    They can optionally override `teardown_rules`, which will otherwise remove the rules by
-    applying an empty configuration file.
-    """
+UPSTREAM_DST_IP = "192.168.128.1"
+UPSTREAM_IP_TO_ALLOW = "192.168.136.1"
+UPSTREAM_IP_TO_BLOCK = "192.168.144.1"
 
-    __metaclass__ = ABCMeta
 
-    ACL_COUNTERS_UPDATE_INTERVAL_SECS = 10
-
-    @abstractmethod
-    def setup_rules(self, dut, acl_table):
-        """Setup ACL rules for testing.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            acl_table: Configuration info for the ACL table.
-
-        """
-        pass
-
-    def post_setup_hook(self, dut, localhost, populate_vlan_arp_entries, tbinfo):
-        """Perform actions after rules have been applied.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            localhost: The host from which tests are run.
-            populate_vlan_arp_entries: A function to populate ARP/FDB tables for VLAN interfaces.
-            tbinfo: Information about the testbed.
-
-        """
-        pass
-
-    def teardown_rules(self, dut):
-        """Tear down ACL rules once the tests have completed.
-
-        Args:
-            dut: The DUT having ACLs applied.
-
-        """
-        logger.info("Finished with tests, removing all ACL rules...")
-
-        # Copy empty rules configuration
-        dut.copy(src=os.path.join(FILES_DIR, ACL_REMOVE_RULES_FILE), dest=DUT_TMP_DIR)
-        remove_rules_dut_path = os.path.join(DUT_TMP_DIR, ACL_REMOVE_RULES_FILE)
-
-        # Remove the rules
-        logger.info("Applying \"{}\"".format(remove_rules_dut_path))
-        dut.command("config acl update full {}".format(remove_rules_dut_path))
-
-    @pytest.fixture(scope="class", autouse=True)
-    def acl_rules(self, duthosts, rand_one_dut_hostname, localhost, setup, acl_table, populate_vlan_arp_entries, tbinfo):
-        """Setup/teardown ACL rules for the current set of tests.
-
-        Args:
-            duthosts: All DUTs belong to the testbed.
-            rand_one_dut_hostname: hostname of a random chosen dut to run test.
-            localhost: The host from which tests are run.
-            setup: Parameters for the ACL tests.
-            acl_table: Configuration info for the ACL table.
-            populate_vlan_arp_entries: A function to populate ARP/FDB tables for VLAN interfaces.
-            tbinfo: Information about the testbed.
-
-        """
-        duthost = duthosts[rand_one_dut_hostname]
-        loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix="acl_rules")
-        loganalyzer.load_common_config()
-
-        try:
-            loganalyzer.expect_regex = [LOG_EXPECT_ACL_RULE_CREATE_RE]
-            with loganalyzer:
-                self.setup_rules(duthost, acl_table)
-
-            self.post_setup_hook(duthost, localhost, populate_vlan_arp_entries, tbinfo)
-        except LogAnalyzerError as err:
-            # Cleanup Config DB if rule creation failed
-            logger.error("ACL table creation failed, attempting to clean-up...")
-            self.teardown_rules(duthost)
-            raise err
-
-        try:
-            yield
-        finally:
-            loganalyzer.expect_regex = [LOG_EXPECT_ACL_RULE_REMOVE_RE]
-            with loganalyzer:
-                logger.info("Removing ACL rules")
-                self.teardown_rules(duthost)
-
-    @pytest.yield_fixture(scope="class", autouse=True)
-    def counters_sanity_check(self, duthosts, rand_one_dut_hostname, acl_rules, acl_table):
-        """Validate that the counters for each rule in the rules list increased as expected.
-
-        This fixture yields a list of rule IDs. The test case should add on to this list if
-        it is required to check the rule for increased counters.
-
-        After the test cases pass, the fixture will wait for the ACL counters to update and then
-        check if the counters for each rule in the list were increased.
-
-        Args:
-            duthosts: All DUTs belong to the testbed.
-            rand_one_dut_hostname: hostname of a random chosen dut to run test.
-            acl_rules: Fixture that sets up the ACL rules.
-            acl_table: Fixture that sets up the ACL table.
-
-        """
-        duthost = duthosts[rand_one_dut_hostname]
-        table_name = acl_table["table_name"]
-        acl_facts_before_traffic = duthost.acl_facts()["ansible_facts"]["ansible_acl_facts"][table_name]["rules"]
-
-        rule_list = []
-        yield rule_list
-
-        if not rule_list:
-            return
-
-        # Wait for orchagent to update the ACL counters
-        time.sleep(self.ACL_COUNTERS_UPDATE_INTERVAL_SECS)
-
-        acl_facts_after_traffic = duthost.acl_facts()["ansible_facts"]["ansible_acl_facts"][table_name]["rules"]
-
-        assert len(acl_facts_after_traffic) == len(acl_facts_before_traffic)
-
-        for rule in rule_list:
-            rule = "RULE_{}".format(rule)
-
-            counters_before = acl_facts_before_traffic[rule]
-            logger.info("Counters for ACL rule \"{}\" before traffic:\n{}"
-                        .format(rule, pprint.pformat(counters_before)))
-
-            counters_after = acl_facts_after_traffic[rule]
-            logger.info("Counters for ACL rule \"{}\" after traffic:\n{}"
-                        .format(rule, pprint.pformat(counters_after)))
-
-            assert counters_after["packets_count"] > counters_before["packets_count"]
-            assert counters_after["bytes_count"] > counters_before["bytes_count"]
-
-    @pytest.fixture(params=["downlink->uplink", "uplink->downlink"])
-    def direction(self, request):
-        """Parametrize test based on direction of traffic."""
-        return request.param
-
-    def get_src_port(self, setup, direction):
-        """Get a source port for the current test."""
-        src_ports = setup["downstream_port_ids"] if direction == "downlink->uplink" else setup["upstream_port_ids"]
-        return random.choice(src_ports)
-
-    def get_dst_ports(self, setup, direction):
-        """Get the set of possible destination ports for the current test."""
-        return setup["upstream_port_ids"] if direction == "downlink->uplink" else setup["downstream_port_ids"]
+class AclIPv4Test(BaseAclTest):
+    def table_type(self):
+        return "L3"
 
     def get_dst_ip(self, direction):
         """Get the default destination IP for the current test."""
@@ -247,14 +96,14 @@ class BaseAclTest(object):
     def test_unmatched_blocked(self, setup, direction, ptfadapter):
         """Verify that unmatched packets are dropped."""
         pkt = self.tcp_packet(setup, direction, ptfadapter)
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
 
     def test_source_ip_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
         """Verify that we can match and forward a packet on source IP."""
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.2"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(1)
 
     def test_rules_priority_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -262,7 +111,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.7"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(20)
 
     def test_rules_priority_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -270,7 +119,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.3"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(7)
 
     def test_dest_ip_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -278,7 +127,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].dst = DOWNSTREAM_IP_TO_ALLOW if direction == "uplink->downlink" else UPSTREAM_IP_TO_ALLOW
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(2 if direction == "uplink->downlink" else 3)
 
     def test_dest_ip_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -286,7 +135,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].dst = DOWNSTREAM_IP_TO_BLOCK if direction == "uplink->downlink" else UPSTREAM_IP_TO_BLOCK
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(15 if direction == "uplink->downlink" else 16)
 
     def test_source_ip_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -294,7 +143,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.6"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(14)
 
     def test_udp_source_ip_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -302,7 +151,7 @@ class BaseAclTest(object):
         pkt = self.udp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.4"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(13)
 
     def test_udp_source_ip_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -310,7 +159,7 @@ class BaseAclTest(object):
         pkt = self.udp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.8"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(26)
 
     def test_icmp_source_ip_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -318,7 +167,7 @@ class BaseAclTest(object):
         pkt = self.icmp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.8"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(25)
 
     def test_icmp_source_ip_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -326,7 +175,7 @@ class BaseAclTest(object):
         pkt = self.icmp_packet(setup, direction, ptfadapter)
         pkt["IP"].src = "20.0.0.4"
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(12)
 
     def test_l4_dport_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -334,7 +183,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].dport = 0x1217
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(5)
 
     def test_l4_sport_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -342,7 +191,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].sport = 0x120D
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(4)
 
     def test_l4_dport_range_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -350,7 +199,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].dport = 0x123B
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(11)
 
     def test_l4_sport_range_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -358,7 +207,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].sport = 0x123A
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(10)
 
     def test_l4_dport_range_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -366,7 +215,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].dport = 0x127B
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(22)
 
     def test_l4_sport_range_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -374,7 +223,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].sport = 0x1271
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(17)
 
     def test_ip_proto_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -382,7 +231,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].proto = 0x7E
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(5)
 
     def test_tcp_flags_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -390,7 +239,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].flags = 0x1B
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(6)
 
     def test_l4_dport_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -398,7 +247,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].dport = 0x127B
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(22)
 
     def test_l4_sport_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -406,7 +255,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].sport = 0x1271
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(10)
 
     def test_ip_proto_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -414,7 +263,7 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["IP"].proto = 0x7F
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(18)
 
     def test_tcp_flags_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
@@ -422,108 +271,93 @@ class BaseAclTest(object):
         pkt = self.tcp_packet(setup, direction, ptfadapter)
         pkt["TCP"].flags = 0x24
 
-        self._verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
+        self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(5)
 
-    def _verify_acl_traffic(self, setup, direction, ptfadapter, pkt, dropped):
-        exp_pkt = self.expected_mask_routed_packet(pkt)
 
-        ptfadapter.dataplane.flush()
-        testutils.send(ptfadapter, self.get_src_port(setup, direction), pkt)
+class ArpResponder(BaseHostResponder):
+    @pytest.fixture(scope="module")
+    def populate_vlan_arp_entries(self, setup, ptfhost, duthosts, rand_one_dut_hostname):
+        """Set up the ARP responder utility in the PTF container."""
+        duthost = duthosts[rand_one_dut_hostname]
+        if setup["topo"] != "t0":
+            def noop():
+                pass
 
-        if dropped:
-            testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=self.get_dst_ports(setup, direction))
-        else:
-            testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=self.get_dst_ports(setup, direction))
+            yield noop
+
+            return  # Don't fall through to t0 case
+
+        addr_list = [DOWNSTREAM_DST_IP, DOWNSTREAM_IP_TO_ALLOW, DOWNSTREAM_IP_TO_BLOCK]
+
+        vlan_host_map = defaultdict(dict)
+        for i in range(len(addr_list)):
+            mac = VLAN_BASE_MAC_PATTERN.format(i)
+            port = random.choice(setup["vlan_ports"])
+            addr = addr_list[i]
+            vlan_host_map[port][str(addr)] = mac
+
+        arp_responder_conf = {}
+        for port in vlan_host_map:
+            arp_responder_conf['eth{}'.format(port)] = vlan_host_map[port]
+
+        with open("/tmp/from_t1.json", "w") as ar_config:
+            json.dump(arp_responder_conf, ar_config)
+        ptfhost.copy(src="/tmp/from_t1.json", dest="/tmp/from_t1.json")
+
+        ptfhost.host.options["variable_manager"].extra_vars.update({"arp_responder_args": "-e"})
+        ptfhost.template(src="templates/arp_responder.conf.j2",
+                         dest="/etc/supervisor/conf.d/arp_responder.conf")
+
+        ptfhost.shell("supervisorctl reread && supervisorctl update")
+        ptfhost.shell("supervisorctl restart arp_responder")
+
+        def populate_arp_table():
+            duthost.command("sonic-clear fdb all")
+            duthost.command("sonic-clear arp")
+
+            for addr in addr_list:
+                duthost.command("ping {} -c 3".format(addr), module_ignore_errors=True)
+
+        populate_arp_table()
+
+        yield populate_arp_table
+
+        logging.info("Stopping ARP responder")
+        ptfhost.shell("supervisorctl stop arp_responder")
+
+        duthost.command("sonic-clear fdb all")
+        duthost.command("sonic-clear arp")
 
 
-class TestBasicAcl(BaseAclTest):
+class TestBasicAcl(AclIPv4Test, ArpResponder, BasicAclConfiguration):
     """Test Basic functionality of ACL rules (i.e. setup with full update on a running device)."""
-
-    def setup_rules(self, dut, acl_table):
-        """Setup ACL rules for testing.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            acl_table: Configuration info for the ACL table.
-
-        """
-        table_name = acl_table["table_name"]
-        dut_conf_file_path = os.path.join(DUT_TMP_DIR, "acl_rules_{}.json".format(table_name))
-
-        logger.info("Generating basic ACL rules config for ACL table \"{}\"".format(table_name))
-        dut.template(src=os.path.join(TEMPLATE_DIR, ACL_RULES_FULL_TEMPLATE),
-                     dest=dut_conf_file_path)
-
-        logger.info("Applying ACL rules config \"{}\"".format(dut_conf_file_path))
-        dut.command("config acl update full {}".format(dut_conf_file_path))
+    pass
 
 
-class TestIncrementalAcl(BaseAclTest):
+class TestIncrementalAcl(AclIPv4Test, ArpResponder, IncrementalAclConfiguration):
     """Test ACL rule functionality with an incremental configuration.
 
     Verify that everything still works as expected when an ACL configuration is applied in
     multiple parts.
     """
-
-    def setup_rules(self, dut, acl_table):
-        """Setup ACL rules for testing.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            acl_table: Configuration info for the ACL table.
-
-        """
-        table_name = acl_table["table_name"]
-
-        logger.info("Generating incremental ACL rules config for ACL table \"{}\""
-                    .format(table_name))
-
-        for part, config_file in enumerate(ACL_RULES_PART_TEMPLATES):
-            dut_conf_file_path = os.path.join(DUT_TMP_DIR, "acl_rules_{}_part_{}.json".format(table_name, part))
-            dut.template(src=os.path.join(TEMPLATE_DIR, config_file), dest=dut_conf_file_path)
-
-            logger.info("Applying ACL rules config \"{}\"".format(dut_conf_file_path))
-            dut.command("config acl update incremental {}".format(dut_conf_file_path))
+    pass
 
 
 @pytest.mark.reboot
-class TestAclWithReboot(TestBasicAcl):
+class TestAclWithReboot(AclIPv4Test, ArpResponder, BasicAclConfigurationWithReboot):
     """Test ACL rule functionality with a reboot.
 
     Verify that configuration persists correctly after reboot and is applied properly
     upon startup.
     """
-
-    def post_setup_hook(self, dut, localhost, populate_vlan_arp_entries, tbinfo):
-        """Save configuration and reboot after rules are applied.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            localhost: The host from which tests are run.
-            populate_vlan_arp_entries: A fixture to populate ARP/FDB tables for VLAN interfaces.
-
-        """
-        dut.command("config save -y")
-        reboot(dut, localhost)
-        populate_vlan_arp_entries()
+    pass
 
 
 @pytest.mark.port_toggle
-class TestAclWithPortToggle(TestBasicAcl):
+class TestAclWithPortToggle(AclIPv4Test, ArpResponder, BasicAclConfigurationWithPortToggle):
     """Test ACL rule functionality after toggling ports.
 
     Verify that ACLs still function as expected after links flap.
     """
-
-    def post_setup_hook(self, dut, localhost, populate_vlan_arp_entries, tbinfo):
-        """Toggle ports after rules are applied.
-
-        Args:
-            dut: The DUT having ACLs applied.
-            localhost: The host from which tests are run.
-            populate_vlan_arp_entries: A fixture to populate ARP/FDB tables for VLAN interfaces.
-
-        """
-        port_toggle(dut, tbinfo)
-        populate_vlan_arp_entries()
+    pass

@@ -1,25 +1,8 @@
-import json
 import logging
-import os
 import pprint
 import pytest
-import random
 
-from collections import defaultdict
-
-from tests.acl.acl_test_constants import (
-    DUT_TMP_DIR,
-    DOWNSTREAM_DST_IP,
-    DOWNSTREAM_IP_TO_ALLOW,
-    DOWNSTREAM_IP_TO_BLOCK,
-    VLAN_BASE_MAC_PATTERN,
-    TEMPLATE_DIR,
-    ACL_TABLE_TEMPLATE,
-    LOG_EXPECT_ACL_TABLE_CREATE_RE,
-    LOG_EXPECT_ACL_TABLE_REMOVE_RE
-)
-
-from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
+from tests.acl.acl_test_base import DUT_TMP_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -102,60 +85,6 @@ def setup(duthosts, rand_one_dut_hostname, tbinfo, ptfadapter):
     duthost.command("rm -rf {}".format(DUT_TMP_DIR))
 
 
-@pytest.fixture(scope="module")
-def populate_vlan_arp_entries(setup, ptfhost, duthosts, rand_one_dut_hostname):
-    """Set up the ARP responder utility in the PTF container."""
-    duthost = duthosts[rand_one_dut_hostname]
-    if setup["topo"] != "t0":
-        def noop():
-            pass
-
-        yield noop
-
-        return  # Don't fall through to t0 case
-
-    addr_list = [DOWNSTREAM_DST_IP, DOWNSTREAM_IP_TO_ALLOW, DOWNSTREAM_IP_TO_BLOCK]
-
-    vlan_host_map = defaultdict(dict)
-    for i in range(len(addr_list)):
-        mac = VLAN_BASE_MAC_PATTERN.format(i)
-        port = random.choice(setup["vlan_ports"])
-        addr = addr_list[i]
-        vlan_host_map[port][str(addr)] = mac
-
-    arp_responder_conf = {}
-    for port in vlan_host_map:
-        arp_responder_conf['eth{}'.format(port)] = vlan_host_map[port]
-
-    with open("/tmp/from_t1.json", "w") as ar_config:
-        json.dump(arp_responder_conf, ar_config)
-    ptfhost.copy(src="/tmp/from_t1.json", dest="/tmp/from_t1.json")
-
-    ptfhost.host.options["variable_manager"].extra_vars.update({"arp_responder_args": "-e"})
-    ptfhost.template(src="templates/arp_responder.conf.j2",
-                     dest="/etc/supervisor/conf.d/arp_responder.conf")
-
-    ptfhost.shell("supervisorctl reread && supervisorctl update")
-    ptfhost.shell("supervisorctl restart arp_responder")
-
-    def populate_arp_table():
-        duthost.command("sonic-clear fdb all")
-        duthost.command("sonic-clear arp")
-
-        for addr in addr_list:
-            duthost.command("ping {} -c 3".format(addr), module_ignore_errors=True)
-
-    populate_arp_table()
-
-    yield populate_arp_table
-
-    logging.info("Stopping ARP responder")
-    ptfhost.shell("supervisorctl stop arp_responder")
-
-    duthost.command("sonic-clear fdb all")
-    duthost.command("sonic-clear arp")
-
-
 @pytest.fixture(scope="module", params=["ingress", "egress"])
 def stage(request, duthosts, rand_one_dut_hostname):
     """Parametrize tests for Ingress/Egress stage testing.
@@ -178,94 +107,3 @@ def stage(request, duthosts, rand_one_dut_hostname):
         pytest.skip("Egress ACLs are not currently supported on \"{}\" ASICs".format(duthost.facts["asic_type"]))
 
     return request.param
-
-
-@pytest.fixture(scope="module")
-def acl_table_config(duthosts, rand_one_dut_hostname, setup, stage):
-    """Generate ACL table configuration files and deploy them to the DUT.
-
-    Args:
-        duthosts: All DUTs belong to the testbed.
-        rand_one_dut_hostname: hostname of a random chosen dut to run test.
-        setup: Parameters for the ACL tests.
-        stage: The ACL stage under test.
-
-    Returns:
-        A dictionary containing the table name and the corresponding configuration file.
-
-    """
-    duthost = duthosts[rand_one_dut_hostname]
-    stage_to_name_map = {
-        "ingress": "DATA_INGRESS_TEST",
-        "egress": "DATA_EGRESS_TEST"
-    }
-
-    acl_table_name = stage_to_name_map[stage]
-
-    acl_table_vars = {
-        "acl_table_name": acl_table_name,
-        "acl_table_ports": setup["acl_table_ports"],
-        "acl_table_stage": stage,
-        "acl_table_type": "L3"
-    }
-
-    logger.info("ACL table configuration:\n{}".format(pprint.pformat(acl_table_vars)))
-
-    acl_table_config_file = "acl_table_{}.json".format(acl_table_name)
-    acl_table_config_path = os.path.join(DUT_TMP_DIR,  acl_table_config_file)
-
-    logger.info("Generating DUT config for ACL table \"{}\"".format(acl_table_name))
-    duthost.host.options["variable_manager"].extra_vars.update(acl_table_vars)
-    duthost.template(
-        src=os.path.join(TEMPLATE_DIR, ACL_TABLE_TEMPLATE),
-        dest=acl_table_config_path
-    )
-
-    return {
-        "table_name": acl_table_name,
-        "config_file": acl_table_config_path
-    }
-
-
-@pytest.fixture(scope="module")
-def acl_table(duthosts, rand_one_dut_hostname, acl_table_config, backup_and_restore_config_db_module):
-    """Apply ACL table configuration and remove after tests.
-
-    Args:
-        duthosts: All DUTs belong to the testbed.
-        rand_one_dut_hostname: hostname of a random chosen dut to run test.
-        acl_table_config: A dictionary describing the ACL table configuration to apply.
-        backup_and_restore_config_db_module: A fixture that handles restoring Config DB
-                after the tests are over.
-
-    Yields:
-        The ACL table configuration.
-
-    """
-    duthost = duthosts[rand_one_dut_hostname]
-    table_name = acl_table_config["table_name"]
-    config_file = acl_table_config["config_file"]
-
-    loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix="acl")
-    loganalyzer.load_common_config()
-
-    try:
-        loganalyzer.expect_regex = [LOG_EXPECT_ACL_TABLE_CREATE_RE]
-        with loganalyzer:
-            logger.info("Creating ACL table from config file: \"{}\"".format(config_file))
-
-            # TODO: Use `config` CLI to create ACL table
-            duthost.command("sonic-cfggen -j {} --write-to-db".format(config_file))
-    except LogAnalyzerError as err:
-        # Cleanup Config DB if table creation failed
-        logger.error("ACL table creation failed, attempting to clean-up...")
-        duthost.command("config acl remove table {}".format(table_name))
-        raise err
-
-    try:
-        yield acl_table_config
-    finally:
-        loganalyzer.expect_regex = [LOG_EXPECT_ACL_TABLE_REMOVE_RE]
-        with loganalyzer:
-            logger.info("Removing ACL table \"{}\"".format(table_name))
-            duthost.command("config acl remove table {}".format(table_name))
