@@ -323,7 +323,11 @@ class AclRuleConfigurationMode(object):
 class BasicAclConfiguration(AclRuleConfigurationMode):
     """Test Basic functionality of ACL rules (i.e. setup with full update on a running device)."""
 
-    ACL_RULES_FULL_TEMPLATE = "acltb_test_rules.j2"
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def acl_rules_template(self):
+        pass
 
     def setup_rules(self, dut, acl_table):
         """Setup ACL rules for testing.
@@ -337,8 +341,7 @@ class BasicAclConfiguration(AclRuleConfigurationMode):
         dut_conf_file_path = os.path.join(DUT_TMP_DIR, "acl_rules_{}.json".format(table_name))
 
         logger.info("Generating basic ACL rules config for ACL table \"{}\"".format(table_name))
-        dut.template(src=os.path.join(TEMPLATE_DIR, self.ACL_RULES_FULL_TEMPLATE),
-                     dest=dut_conf_file_path)
+        dut.template(src=self.acl_rules_template(), dest=dut_conf_file_path)
 
         logger.info("Applying ACL rules config \"{}\"".format(dut_conf_file_path))
         dut.command("config acl update full {}".format(dut_conf_file_path))
@@ -351,7 +354,11 @@ class IncrementalAclConfiguration(AclRuleConfigurationMode):
     multiple parts.
     """
 
-    ACL_RULES_PART_TEMPLATES = tuple("acltb_test_rules_part_{}.j2".format(i) for i in xrange(1, 3))
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def acl_rules_templates(self):
+        pass
 
     def setup_rules(self, dut, acl_table):
         """Setup ACL rules for testing.
@@ -366,9 +373,9 @@ class IncrementalAclConfiguration(AclRuleConfigurationMode):
         logger.info("Generating incremental ACL rules config for ACL table \"{}\""
                     .format(table_name))
 
-        for part, config_file in enumerate(self.ACL_RULES_PART_TEMPLATES):
+        for part, config_file in enumerate(self.acl_rules_templates()):
             dut_conf_file_path = os.path.join(DUT_TMP_DIR, "acl_rules_{}_part_{}.json".format(table_name, part))
-            dut.template(src=os.path.join(TEMPLATE_DIR, config_file), dest=dut_conf_file_path)
+            dut.template(src=config_file, dest=dut_conf_file_path)
 
             logger.info("Applying ACL rules config \"{}\"".format(dut_conf_file_path))
             dut.command("config acl update incremental {}".format(dut_conf_file_path))
