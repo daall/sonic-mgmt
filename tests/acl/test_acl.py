@@ -43,6 +43,7 @@ UPSTREAM_IP_TO_BLOCK = "192.168.144.1"
 ACL_RULES_FULL_TEMPLATE = "acltb_test_rules.j2"
 ACL_RULES_PART_TEMPLATES = tuple("acltb_test_rules_part_{}.j2".format(i) for i in xrange(1, 3))
 
+
 class AclIPv4Test(BaseAclTest):
     @pytest.fixture(scope="class")
     def table_type(self):

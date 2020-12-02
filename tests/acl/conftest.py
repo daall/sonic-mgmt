@@ -6,7 +6,10 @@ from tests.acl.acl_test_base import DUT_TMP_DIR
 
 logger = logging.getLogger(__name__)
 
-pytest_plugins = ("tests.common.fixtures.duthost_utils")
+pytest_plugins = (
+    "tests.common.fixtures.duthost_utils",
+    "tests.common.fixtures.ptfhost_utils"  # auto-use copy_arp_responder_py
+)
 
 
 @pytest.fixture(scope="module")

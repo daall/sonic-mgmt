@@ -126,7 +126,7 @@ class AclIPv6Test(BaseAclTest):
     def test_dest_ip_match_forwarded(self, setup, direction, ptfadapter, counters_sanity_check):
         """Verify that we can match and forward a packet on destination IP."""
         pkt = self.tcp_packet(setup, direction, ptfadapter)
-        pkt["IP"].dst = DOWNSTREAM_IP_TO_ALLOW if direction == "uplink->downlink" else UPSTREAM_IP_TO_ALLOW
+        pkt["IPv6"].dst = DOWNSTREAM_IP_TO_ALLOW if direction == "uplink->downlink" else UPSTREAM_IP_TO_ALLOW
 
         self.verify_acl_traffic(setup, direction, ptfadapter, pkt, False)
         counters_sanity_check.append(2 if direction == "uplink->downlink" else 3)
@@ -134,7 +134,7 @@ class AclIPv6Test(BaseAclTest):
     def test_dest_ip_match_dropped(self, setup, direction, ptfadapter, counters_sanity_check):
         """Verify that we can match and drop a packet on destination IP."""
         pkt = self.tcp_packet(setup, direction, ptfadapter)
-        pkt["IP"].dst = DOWNSTREAM_IP_TO_BLOCK if direction == "uplink->downlink" else UPSTREAM_IP_TO_BLOCK
+        pkt["IPv6"].dst = DOWNSTREAM_IP_TO_BLOCK if direction == "uplink->downlink" else UPSTREAM_IP_TO_BLOCK
 
         self.verify_acl_traffic(setup, direction, ptfadapter, pkt, True)
         counters_sanity_check.append(15 if direction == "uplink->downlink" else 16)
