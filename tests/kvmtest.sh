@@ -108,6 +108,11 @@ export ANSIBLE_LIBRARY=$SONIC_MGMT_DIR/ansible/library/
 export ANSIBLE_KEEP_REMOTE_FILES=1
 
 pushd $SONIC_MGMT_DIR/tests
+
+# clear cache from previous test runs
+rm -rf _cache
+
+# clear logs from previous test runs
 rm -rf logs
 mkdir -p logs
 
